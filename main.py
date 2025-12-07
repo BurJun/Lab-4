@@ -1,6 +1,5 @@
-from itertools import combinations
+from pprint import pprint
 
-# --- Константы варианта ---
 ITEMS = {
     'r': (3, 25),  # винтовка
     'p': (2, 15),  # пистолет
@@ -11,78 +10,72 @@ ITEMS = {
     'x': (3, 20),  # топор
     't': (1, 25),  # оберег
     'f': (1, 15),  # фляжка
-    'd': (1, 10),  # антидот (обязателен при заражении)
+    'd': (1, 10),  # антидот
     's': (2, 20),  # еда
     'c': (2, 20),  # арбалет
 }
 
-W = 4
-H = 2                # инвентарь 2x4
-MAX_CELLS = W * H          
-INITIAL_POINTS = 20
-MIN_POINTS = 0
-REQUIRED_ITEMS = {'d'}     # болезнь: заражение
+INITIAL_POINTS = 20 # max очков
+REQUIRED = {'d'}
 
-# --- Логика подбора ---
-def weight(items): return sum(ITEMS[k][0] for k in items)
-def points(items): return INITIAL_POINTS + sum(ITEMS[k][1] for k in items)
 
-def is_valid(items) -> bool:
-    return (
-        weight(items) <= MAX_CELLS and
-        points(items) > MIN_POINTS and
-        REQUIRED_ITEMS.issubset(items)
-    )
+def solve_knapsack(max_cells: int):
+    # считаем обяз. предметов
+    req_weight = sum(ITEMS[k][0] for k in REQUIRED)
+    req_points = sum(ITEMS[k][1] for k in REQUIRED)
 
-def all_valid_combinations():
-    keys = list(ITEMS.keys())
-    best = None  # (combo, pts)
-    valid = []
-    for r in range(1, len(keys) + 1):
-        for combo in combinations(keys, r):
-            if is_valid(combo):
-                pts = points(combo)
-                valid.append((combo, pts))
-                if best is None or pts > best[1]:
-                    best = (combo, pts)
-    return valid, best
-
-# --- Укладка в инвентарь 2x4 ---
-def pack_inventory(combo, w=W, h=H):
-    grid = [[' ' for _ in range(w)] for _ in range(h)]
-    for item in combo:
-        size = ITEMS[item][0]
-        placed = False
-        for i in range(h):
-            j = 0
-            while j < w:
-                if j + size <= w and all(grid[i][j+s] == ' ' for s in range(size)):
-                    for s in range(size):
-                        grid[i][j+s] = item
-                    placed = True
-                    break
-                j += 1
-            if placed: break
-        # если не влезло подряд в строку — пропускаем (простая укладка)
-    return grid
-
-def save_result(filename, combo, pts, grid):
-    with open(filename, "w", encoding="utf-8") as f:
-        f.write("Лучшая комбинация:\n")
-        f.write(f"Items: {list(combo)}, Survival points: {pts}\n\n")
-        f.write(f"Инвентарь {H}x{W}:\n")
-        for row in grid:
-            f.write(f"[{' ] [ '.join(row)}]\n")
-
-def main():
-    valid, best = all_valid_combinations()
-    if not best:
-        print("Нет валидных комбинаций при заданных ограничениях.")
+    if req_weight > max_cells:
+        print("Обязательный предмет не влезают в рюкзак.")
         return
-    combo, pts = best
-    grid = pack_inventory(combo)
-    save_result("validCombinations.txt", combo, pts, grid)
-    print("Готово: validCombinations.txt")
+
+    capacity = max_cells - req_weight
+    base_points = INITIAL_POINTS + req_points
+
+    # список ост. предметов
+    free_items = [k for k in ITEMS.keys() if k not in REQUIRED]
+    n = len(free_items)
+
+    # dp[i][w] = макс. очков от первых i предметов при вместимости w
+    dp = [[0] * (capacity + 1) for _ in range(n + 1)]
+
+    for i in range(1, n + 1):
+        key = free_items[i - 1]
+        w_i, p_i = ITEMS[key]
+        for w in range(1, capacity + 1):
+            # не берём
+            best = dp[i - 1][w]
+            # возьмем
+            if w_i <= w:
+                cand = p_i + dp[i - 1][w - w_i]
+                if cand > best:
+                    best = cand
+            dp[i][w] = best
+
+    # набор вещей
+    w = capacity
+    chosen = []
+    i = n
+    while i > 0 and w > 0:
+        if dp[i][w] == dp[i - 1][w]:
+            i -= 1  # не взяли
+        else:
+            key = free_items[i - 1]
+            chosen.append(key)
+            w -= ITEMS[key][0]
+            i -= 1
+
+    chosen = set(chosen) | REQUIRED
+    total_points = base_points + dp[n][capacity]
+
+    print(f"Макс. ячеек: {max_cells}")
+    print(f"Выбранные предметы: {sorted(chosen)}")
+    print(f"Итоговые очки выживания: {total_points}")
+    print("DP-таблица (для интереса):")
+    pprint(dp)
+
 
 if __name__ == "__main__":
-    main()
+    # 8 ячеек
+    solve_knapsack(8)
+    # 7 ячеек
+    solve_knapsack(7)
